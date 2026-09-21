@@ -22,6 +22,7 @@
     - `./stop.sh` - stops running laya container
 - documentation
   - keep AGENTS.md tiny
+  - `README.md` is the human/github-facing entry point; keep in sync with actual script state (marks unbuilt parts as roadmap)
   - when asked to persist decisions or research, store .md file in `docs/`
   - list of documentation files:
     - (none yet)
