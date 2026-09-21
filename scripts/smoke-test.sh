@@ -13,8 +13,14 @@ container_running || die "container '${CONTAINER_NAME}' is not running -- run ./
 
 BASE="http://${LAYA_BIND:-127.0.0.1}:${LAYA_PORT:-8100}"
 
+# Add auth header if API key is set
+AUTH_HEADER=""
+if [[ -n "${LAYA_API_KEY}" ]]; then
+  AUTH_HEADER="-H 'Authorization: Bearer ${LAYA_API_KEY}'"
+fi
+
 log "GET ${BASE}/health"
-health="$(curl -fsS -m 15 "${BASE}/health" 2>&1)" \
+health="$(curl -fsS -m 15 ${AUTH_HEADER} "${BASE}/health" 2>&1)" \
   || die "health check failed -- container up but not serving. Try: docker logs ${CONTAINER_NAME}"
 
 python3 - "$health" <<'PY' || exit 1
@@ -29,7 +35,7 @@ if not str(h.get("device", "")).startswith("cuda"):
 PY
 
 log "POST ${BASE}/decide"
-resp="$(curl -fsS -m 30 "${BASE}/decide" \
+resp="$(curl -fsS -m 30 ${AUTH_HEADER} "${BASE}/decide" \
   -H 'Content-Type: application/json' \
   -d '{
     "state": "Subject: URGENT - production API returning 500s\n\nOur checkout has been down for 20 minutes and we are losing orders. We are on the Enterprise plan. Please escalate immediately.",
@@ -61,7 +67,7 @@ print(f"\nlatency: {r.get('latency_ms')} ms for 3 questions")
 PY
 
 log "validating error handling"
-code="$(curl -sS -o /dev/null -w '%{http_code}' -m 15 "${BASE}/decide" \
+code="$(curl -sS -o /dev/null -w '%{http_code}' -m 15 ${AUTH_HEADER} "${BASE}/decide" \
   -H 'Content-Type: application/json' \
   -d '{"state": "hi", "questions": {"q": {"type": "choice", "instructions": "x"}}}')"
 [[ "$code" == "422" ]] || die "malformed request should return 422, got ${code}"

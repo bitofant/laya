@@ -15,8 +15,9 @@ from contextlib import asynccontextmanager
 from typing import Any, Dict, List, Optional, Union
 
 import torch
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Depends, Security
 from fastapi.responses import JSONResponse
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel, Field, model_validator
 
 MODEL_DIR = os.environ.get("LAYA_MODEL_DIR", "/models/laya-typed-decisions")
@@ -27,6 +28,19 @@ DEVICE = os.environ.get("LAYA_DEVICE", "cuda")
 import asyncio
 
 STATE: Dict[str, Any] = {"agent": None, "lock": asyncio.Lock(), "presets": {}}
+
+API_KEY = os.environ.get("LAYA_API_KEY")
+auth_scheme = HTTPBearer(auto_error=False)
+
+async def get_api_key(credentials: Optional[HTTPAuthorizationCredentials] = Security(auth_scheme)):
+    if not API_KEY:
+        return  # No API key configured, allow all
+    if not credentials or credentials.credentials != API_KEY:
+        raise HTTPException(
+            status_code=401,
+            detail="Invalid or missing API key",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
 
 
 @asynccontextmanager
@@ -131,12 +145,12 @@ def health():
 
 
 @app.get("/presets")
-def presets():
+def presets(token: Any = Depends(get_api_key)):
     return {"presets": sorted(STATE["presets"])}
 
 
 @app.post("/decide")
-async def decide(req: DecideRequest):
+async def decide(req: DecideRequest, token: Any = Depends(get_api_key)):
     agent = STATE["agent"]
     if agent is None:
         raise HTTPException(503, "model still loading")

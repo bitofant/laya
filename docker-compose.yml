@@ -25,6 +25,7 @@ services:
     environment:
       LAYA_MODEL_DIR: /models/${LAYA_MODEL_NAME:-laya-typed-decisions}
       LAYA_DEVICE: ${LAYA_DEVICE:-cuda}
+      LAYA_API_KEY: ${LAYA_API_KEY:-}
       HF_HOME: /models/.hf
       PYTHONUNBUFFERED: "1"
     healthcheck:

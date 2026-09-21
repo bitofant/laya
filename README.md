@@ -71,7 +71,9 @@ scripts/smoke-test.sh   # verify GPU + a real typed-decision pass over HTTP
 The endpoint listens on `127.0.0.1:8100` (localhost only — see [Security](#security)).
 
 ```bash
-curl -s localhost:8100/decide -H 'Content-Type: application/json' -d '{
+curl -s localhost:8100/decide -H 'Content-Type: application/json' \
+  -H 'Authorization: Bearer YOUR_API_KEY' \
+  -d '{
   "state": "Our checkout has been down for 20 minutes and we are losing orders.",
   "questions": {
     "intent":  {"type": "choice", "instructions": "What does the sender want?",
@@ -89,6 +91,7 @@ Returns each question's answer, full probability distribution, calibrated confid
 ```bash
 curl -s localhost:8100/presets     # triage, email, guard, moderation, router
 curl -s localhost:8100/decide -H 'Content-Type: application/json' \
+  -H 'Authorization: Bearer YOUR_API_KEY' \
   -d '{"state": "Server is on fire!", "preset": "triage"}'
 ```
 
@@ -117,6 +120,7 @@ Environment variables, all optional:
 | `LAYA_DEVICE` | `cuda` | Set `cpu` to serve on CPU deliberately |
 | `LAYA_MODEL_REPO` | `convaiinnovations/laya-typed-decisions` | HF repo to fetch |
 | `LAYA_MODEL_NAME` | `laya-typed-decisions` | Directory under `./models` |
+| `LAYA_API_KEY` | — | Set a secret key to enable Bearer authentication |
 | `HF_TOKEN` | — | Only needed for gated repos; never written to disk |
 
 `setup.sh` is idempotent — re-run it freely. `--force` re-downloads weights.
@@ -165,8 +169,9 @@ server pays that during startup, so callers never see it — the first real requ
 
 ## Security
 
-The endpoint has **no authentication**. It binds to `127.0.0.1` by default for that
-reason. Before setting `LAYA_BIND=0.0.0.0`, put a reverse proxy with auth in front of it.
+The endpoint supports **Bearer Token authentication**. If `LAYA_API_KEY` is set, requests to `/decide` and `/presets` must include the `Authorization: Bearer <key>` header.
+
+It binds to `127.0.0.1` by default for that reason. Before setting `LAYA_BIND=0.0.0.0`, ensure you have a strong API key or a reverse proxy with auth in front of it.
 
 ## Troubleshooting
 
@@ -190,7 +195,7 @@ Laya needs ~2 GB free. Details and measured timings in [`docs/gpu-notes.md`](doc
 - [x] Smoke test script (GPU probe + real typed-decision pass)
 - [x] HTTP inference endpoint (typed questions in, calibrated answers out)
 - [x] Health check endpoint + latency benchmark
-- [ ] Authentication in front of the endpoint
+- [x] Authentication in front of the endpoint
 - [ ] Checkpoint selection / preloading (English, multilingual, typed-decisions)
 - [ ] Fine-tuning workflow
 
