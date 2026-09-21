@@ -14,13 +14,26 @@ services:
             - driver: nvidia
               count: all
               capabilities: [gpu]
+    # Bound to localhost by default: the model is unauthenticated, so do not expose it
+    # to the network without putting auth in front of it.
+    ports:
+      - "${LAYA_BIND:-127.0.0.1}:${LAYA_PORT:-8100}:8100"
     volumes:
       # Read-write on purpose: laya.Agent rewrites tokenizer_config.json on load to stay
       # compatible across transformers versions. Read-only silently skips that fixup.
       - ./models:/models
     environment:
       LAYA_MODEL_DIR: /models/${LAYA_MODEL_NAME:-laya-typed-decisions}
+      LAYA_DEVICE: ${LAYA_DEVICE:-cuda}
       HF_HOME: /models/.hf
       PYTHONUNBUFFERED: "1"
+    healthcheck:
+      test: ["CMD", "python", "-c",
+             "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8100/health',timeout=5).status==200 else 1)"]
+      interval: 15s
+      timeout: 10s
+      # Model load is ~4 s; the window is generous so a slow first load is not a failure.
+      start_period: 90s
+      retries: 3
     # Survives daemon/host restarts but stays off after an explicit ./stop.sh.
     restart: unless-stopped

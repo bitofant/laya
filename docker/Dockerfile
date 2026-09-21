@@ -16,14 +16,17 @@ RUN pip install --no-cache-dir \
 ARG LAYA_VERSION=0.3.4
 RUN pip install --no-cache-dir "laya==${LAYA_VERSION}"
 
+RUN pip install --no-cache-dir "fastapi==0.120.4" "uvicorn[standard]==0.38.0"
+
 # Weights are mounted at runtime (never baked into the image, never committed).
 ENV LAYA_MODEL_DIR=/models/laya-typed-decisions \
     HF_HOME=/models/.hf \
     PYTHONUNBUFFERED=1
 
 WORKDIR /app
-COPY smoke_test.py /app/smoke_test.py
+COPY smoke_test.py bench_latency.py server.py /app/
 
-# Idle by default: this slice has no server yet, so start.sh keeps a warm container
-# that scripts/smoke-test.sh can exec into. The HTTP endpoint replaces this CMD later.
-CMD ["sleep", "infinity"]
+EXPOSE 8100
+# One worker on purpose: the model is ~2.4 GB of VRAM and laya.Agent is serialised behind
+# a lock anyway, so extra workers would duplicate weights for no throughput gain.
+CMD ["uvicorn", "server:app", "--host", "0.0.0.0", "--port", "8100", "--workers", "1"]

@@ -2,8 +2,8 @@
 
 Dockerized setup for running and managing a self-hosted [Laya](https://huggingface.co/convaiinnovations/laya) instance on an NVIDIA GPU.
 
-> **Status: WIP.** Build, weights, container lifecycle and a GPU smoke test work today.
-> There is no HTTP endpoint yet — the container idles and you exec into it. See [Roadmap](#roadmap).
+> **Status: working.** Build, weights, lifecycle and an HTTP inference endpoint all run on
+> GPU today. Measured **6.2 ms/question** on an RTX 5090 — see [Performance](#performance).
 
 ## What is Laya?
 
@@ -63,10 +63,61 @@ git clone git@github.com:bitofant/laya.git
 cd laya
 
 ./setup.sh              # check prereqs, build image, download weights (~2 min)
-./start.sh              # start (or resume) the laya container
-scripts/smoke-test.sh   # verify GPU + run one real typed-decision pass
+./start.sh              # start the container, wait until the endpoint is ready
+scripts/smoke-test.sh   # verify GPU + a real typed-decision pass over HTTP
 ./stop.sh               # stop it again
 ```
+
+The endpoint listens on `127.0.0.1:8100` (localhost only — see [Security](#security)).
+
+```bash
+curl -s localhost:8100/decide -H 'Content-Type: application/json' -d '{
+  "state": "Our checkout has been down for 20 minutes and we are losing orders.",
+  "questions": {
+    "intent":  {"type": "choice", "instructions": "What does the sender want?",
+                "criteria": {"support": "needs help", "sales": "wants to buy"}},
+    "urgency": {"type": "score",  "instructions": "How urgent?",
+                "criteria": ["not urgent", "soon", "critical"]},
+    "is_spam": {"type": "noul",   "instructions": "Is this spam?"}
+  }
+}'
+```
+
+Returns each question's answer, full probability distribution, calibrated confidence and
+`latency_ms`. The SDK's built-in question sets are available without writing any:
+
+```bash
+curl -s localhost:8100/presets     # triage, email, guard, moderation, router
+curl -s localhost:8100/decide -H 'Content-Type: application/json' \
+  -d '{"state": "Server is on fire!", "preset": "triage"}'
+```
+
+## API
+
+| | | |
+|---|---|---|
+| `GET` | `/health` | Status, device, VRAM. `503` while loading. Never loads the model. |
+| `GET` | `/presets` | Names of the SDK's built-in question sets. |
+| `POST` | `/decide` | `{"state": ..., "questions": {...}}` or `{"state": ..., "preset": "triage"}` |
+
+`state` accepts a string, a JSON object, or a list of conversation turns. Supply exactly
+one of `questions` or `preset`. Malformed questions return `422`; an unknown preset `404`.
+
+**Batch your questions.** They share one forward pass, so three questions in one request
+cost ~2.3 ms each versus ~6.2 ms asked separately.
+
+## Configuration
+
+Environment variables, all optional:
+
+| | | |
+|---|---|---|
+| `LAYA_PORT` | `8100` | Published port |
+| `LAYA_BIND` | `127.0.0.1` | Bind address — see [Security](#security) |
+| `LAYA_DEVICE` | `cuda` | Set `cpu` to serve on CPU deliberately |
+| `LAYA_MODEL_REPO` | `convaiinnovations/laya-typed-decisions` | HF repo to fetch |
+| `LAYA_MODEL_NAME` | `laya-typed-decisions` | Directory under `./models` |
+| `HF_TOKEN` | — | Only needed for gated repos; never written to disk |
 
 `setup.sh` is idempotent — re-run it freely. `--force` re-downloads weights.
 `stop.sh --down` removes the container entirely (weights are kept).
@@ -96,6 +147,27 @@ Conventions:
 - **No secrets in git.** `.env*`, `*.key`, `*.pem` and `secrets/` are gitignored.
 - **The SDK is a pinned pip dependency** (`laya==0.3.4`), not vendored source.
 
+## Performance
+
+Measured on an RTX 5090 with the typed-decisions checkpoint (`scripts/bench-latency.sh`):
+
+| | |
+|---|---|
+| 1 question | **6.22 ms** median (p95 6.24) |
+| 3 questions, batched | 6.80 ms → **2.27 ms/question** |
+| Peak VRAM | 2.44 GB |
+| Startup (load + warmup) | ~18 s |
+
+Upstream claims ~33 ms/question; this is roughly **5x faster** on a 5090.
+
+The first forward pass costs ~14.6 s in CUDA context setup and kernel autotune. The
+server pays that during startup, so callers never see it — the first real request is ~9 ms.
+
+## Security
+
+The endpoint has **no authentication**. It binds to `127.0.0.1` by default for that
+reason. Before setting `LAYA_BIND=0.0.0.0`, put a reverse proxy with auth in front of it.
+
 ## Troubleshooting
 
 **`laya.load()` never fails loudly.** If CUDA is unusable it prints a warning and quietly
@@ -116,9 +188,10 @@ Laya needs ~2 GB free. Details and measured timings in [`docs/gpu-notes.md`](doc
 - [x] `setup.sh` — image build + weight download via throwaway HF container
 - [x] `start.sh` / `stop.sh` — container lifecycle
 - [x] Smoke test script (GPU probe + real typed-decision pass)
-- [ ] HTTP inference endpoint (typed questions in, calibrated answers out)
+- [x] HTTP inference endpoint (typed questions in, calibrated answers out)
+- [x] Health check endpoint + latency benchmark
+- [ ] Authentication in front of the endpoint
 - [ ] Checkpoint selection / preloading (English, multilingual, typed-decisions)
-- [ ] Health check endpoint
 - [ ] Fine-tuning workflow
 
 ## Links

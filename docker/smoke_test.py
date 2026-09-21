@@ -39,10 +39,11 @@ def check_gpu() -> torch.device:
     free_b, total_b = torch.cuda.mem_get_info(0)
     free_gb, total_gb = free_b / 1e9, total_b / 1e9
     print(f"VRAM: {free_gb:.1f} GB free of {total_gb:.1f} GB")
-    # The checkpoint is ~0.8 GB plus activations. If another process (a vLLM engine, a
-    # stray notebook) has eaten the card, laya.load() does NOT raise -- it prints a warning
-    # and falls back to CPU, which is why this check exists before we get there.
-    if free_gb < 2.0:
+    # Measured peak allocation is 2.44 GB (0.8 GB weights + activations), so the floor is
+    # 3.0 GB, not the 2.0 GB you would guess from checkpoint size alone. If another process
+    # (a vLLM engine, a stray notebook) has eaten the card, laya.load() does NOT raise --
+    # it prints a warning and falls back to CPU, which is why this runs before we get there.
+    if free_gb < 3.0:
         hogs = os.popen(
             "nvidia-smi --query-compute-apps=pid,process_name,used_memory "
             "--format=csv,noheader 2>/dev/null"

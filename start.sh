@@ -20,4 +20,19 @@ compose up --detach
 
 container_running || die "container failed to start -- check: docker logs ${CONTAINER_NAME}"
 
-log "running. next: scripts/smoke-test.sh"
+# The model loads before uvicorn serves, so "started" != "ready". Poll health so the
+# script only returns once the endpoint can actually answer.
+BASE="http://${LAYA_BIND:-127.0.0.1}:${LAYA_PORT:-8100}"
+log "waiting for ${BASE}/health"
+for i in $(seq 1 60); do
+  if curl -fsS -m 5 "${BASE}/health" >/dev/null 2>&1; then
+    dev="$(curl -fsS -m 5 "${BASE}/health" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("device","?"))' 2>/dev/null)"
+    log "ready on ${dev} -- ${BASE}"
+    log "next: scripts/smoke-test.sh"
+    exit 0
+  fi
+  container_running || die "container exited during startup -- check: docker logs ${CONTAINER_NAME}"
+  sleep 2
+done
+
+die "timed out waiting for health. Check: docker logs ${CONTAINER_NAME}"
