@@ -1,0 +1,27 @@
+# Laya
+
+- refers to the [Laya decision model](https://huggingface.co/convaiinnovations/laya)
+- goal is to have everything in this repo to start up and manage a laya instance
+- it will run in docker, with nvidia-docker tools
+- for now, the test machine has a single Nvidia RTX 5090 (Blackwell, 32gb VRAM)
+- prefer creating scripts over running longer ad-hoc shell commands
+- this should be easy to use for humans
+- prefer git submodules over copying code
+- you can use throwaway containers, e.g. one to download the model weights from HF if needed
+- do not store any secrets in github
+- AGENTS.md:
+  - must be kept in sync with the repo
+  - should use terse language (target highly knowledgeable LLMs like yourself)
+- scripts
+  - use terse comments to persist context, if necessary
+  - scripts intended to be run by humands go in top lvl directory (e.g. `start.sh`, `stop.sh`, `setup.sh`, `rebuild.sh`...)
+  - scripts called by other scripts or intended to be called by LLM agents go to `scripts/`
+  - list of scripts with brief description:
+    - `./setup.sh` - builds containers, downloads model weights
+    - `./start.sh` - starts (or resumes) laya container
+    - `./stop.sh` - stops running laya container
+- documentation
+  - keep AGENTS.md tiny
+  - when asked to persist decisions or research, store .md file in `docs/`
+  - list of documentation files:
+    - (none yet)

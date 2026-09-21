@@ -1,0 +1,25 @@
+# secrets / local env
+.env
+.env.*
+*.key
+*.pem
+secrets/
+
+# model weights & caches (fetched via setup.sh)
+models/
+weights/
+*.safetensors
+*.gguf
+*.bin
+.cache/
+hf_cache/
+
+# runtime
+logs/
+*.log
+tmp/
+
+# editor / os
+.DS_Store
+.idea/
+.vscode/
