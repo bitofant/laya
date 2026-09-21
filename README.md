@@ -2,7 +2,8 @@
 
 Dockerized setup for running and managing a self-hosted [Laya](https://huggingface.co/convaiinnovations/laya) instance on an NVIDIA GPU.
 
-> **Status: early WIP.** The repo layout and script interface below are the target design. Not all scripts exist yet — see [Roadmap](#roadmap).
+> **Status: WIP.** Build, weights, container lifecycle and a GPU smoke test work today.
+> There is no HTTP endpoint yet — the container idles and you exec into it. See [Roadmap](#roadmap).
 
 ## What is Laya?
 
@@ -47,7 +48,7 @@ Everything needed to stand up a Laya instance — build, weights, run, stop — 
   - Weights are small (~808 MB English, ~647 MB multilingual), so far less VRAM is sufficient
 - Recent NVIDIA driver
 - Docker + [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html) (`nvidia-docker`)
-- `git` (this repo uses submodules)
+- `git`
 
 Verify GPU passthrough before anything else:
 
@@ -58,26 +59,34 @@ docker run --rm --gpus all nvidia/cuda:12.6.0-base-ubuntu24.04 nvidia-smi
 ## Quick start
 
 ```bash
-git clone --recurse-submodules git@github.com:bitofant/laya.git
+git clone git@github.com:bitofant/laya.git
 cd laya
 
-./setup.sh    # build images, download model weights
-./start.sh    # start (or resume) the laya container
-./stop.sh     # stop it again
+./setup.sh              # check prereqs, build image, download weights (~2 min)
+./start.sh              # start (or resume) the laya container
+scripts/smoke-test.sh   # verify GPU + run one real typed-decision pass
+./stop.sh               # stop it again
 ```
 
-Already cloned without submodules? `git submodule update --init --recursive`
+`setup.sh` is idempotent — re-run it freely. `--force` re-downloads weights.
+`stop.sh --down` removes the container entirely (weights are kept).
+
+By default this pulls the **typed-decisions** checkpoint (808 MB), not the base one — see
+the warning above. Override with `LAYA_MODEL_REPO` / `LAYA_MODEL_NAME`.
 
 ## Layout
 
 ```
 .
-├── AGENTS.md        # instructions for LLM agents working on this repo
-├── setup.sh         # build containers, download model weights
-├── start.sh         # start / resume the laya container
-├── stop.sh          # stop the running container
-├── scripts/         # internal helpers (called by the top-level scripts or by agents)
-└── docs/            # persisted decisions & research notes
+├── AGENTS.md           # instructions for LLM agents working on this repo
+├── setup.sh            # check prereqs, build image, download weights
+├── start.sh            # start / resume the laya container
+├── stop.sh             # stop the running container
+├── docker-compose.yml  # container lifecycle (driven by start.sh / stop.sh)
+├── docker/             # Dockerfile + in-container smoke test
+├── scripts/            # internal helpers (called by the top-level scripts or by agents)
+├── models/             # downloaded weights (gitignored)
+└── docs/               # persisted decisions & research notes
 ```
 
 Conventions:
@@ -85,16 +94,31 @@ Conventions:
 - **Top-level scripts are for humans.** `scripts/` is for everything called by other scripts or by agents.
 - **Model weights are never committed.** They live in gitignored paths and are fetched by `setup.sh` (via a throwaway container).
 - **No secrets in git.** `.env*`, `*.key`, `*.pem` and `secrets/` are gitignored.
-- **Submodules over copy-paste** for upstream code.
+- **The SDK is a pinned pip dependency** (`laya==0.3.4`), not vendored source.
+
+## Troubleshooting
+
+**`laya.load()` never fails loudly.** If CUDA is unusable it prints a warning and quietly
+runs on CPU — correct answers, ~10x slower. `scripts/smoke-test.sh` hard-fails in that
+case instead of reporting a false pass.
+
+**The SDK's "Blackwell / RTX 50-series" warning is often wrong.** It blames your PyTorch
+build, but the usual real cause is another process holding the VRAM:
+
+```bash
+nvidia-smi --query-compute-apps=pid,process_name,used_memory --format=csv
+```
+
+Laya needs ~2 GB free. Details and measured timings in [`docs/gpu-notes.md`](docs/gpu-notes.md).
 
 ## Roadmap
 
-- [ ] `setup.sh` — image build + weight download via throwaway HF container
-- [ ] `start.sh` / `stop.sh` — container lifecycle
-- [ ] Upstream Laya SDK as a git submodule
+- [x] `setup.sh` — image build + weight download via throwaway HF container
+- [x] `start.sh` / `stop.sh` — container lifecycle
+- [x] Smoke test script (GPU probe + real typed-decision pass)
 - [ ] HTTP inference endpoint (typed questions in, calibrated answers out)
 - [ ] Checkpoint selection / preloading (English, multilingual, typed-decisions)
-- [ ] Health check + smoke test script
+- [ ] Health check endpoint
 - [ ] Fine-tuning workflow
 
 ## Links

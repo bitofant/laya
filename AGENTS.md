@@ -17,12 +17,23 @@
   - scripts intended to be run by humands go in top lvl directory (e.g. `start.sh`, `stop.sh`, `setup.sh`, `rebuild.sh`...)
   - scripts called by other scripts or intended to be called by LLM agents go to `scripts/`
   - list of scripts with brief description:
-    - `./setup.sh` - builds containers, downloads model weights
+    - `./setup.sh` - checks prereqs, builds image, downloads weights (idempotent; `--force` re-downloads)
     - `./start.sh` - starts (or resumes) laya container
-    - `./stop.sh` - stops running laya container
+    - `./stop.sh` - stops running laya container (`--down` removes it)
+    - `scripts/lib.sh` - shared config + helpers, sourced by all others; not run directly
+    - `scripts/build-image.sh` - builds `laya:local` from `docker/`
+    - `scripts/download-weights.sh` - fetches weights via throwaway HF container
+    - `scripts/smoke-test.sh` - execs a GPU + inference check in the running container
+- runtime
+  - `docker-compose.yml` drives lifecycle; `docker/Dockerfile` + `docker/smoke_test.py` build the image
+  - laya SDK via pinned pip (`laya==0.3.4`), not a submodule
+  - default checkpoint: `convaiinnovations/laya-typed-decisions` (base checkpoints are ~chance on typed decisions)
+  - weights live in gitignored `./models`, mounted rw (the SDK rewrites `tokenizer_config.json` on load)
+  - torch MUST stay pinned to a cu128+ wheel for sm_120/Blackwell; see `docs/gpu-notes.md`
+  - `laya.load()` falls back to CPU silently — keep the smoke test's device assertion
 - documentation
   - keep AGENTS.md tiny
   - `README.md` is the human/github-facing entry point; keep in sync with actual script state (marks unbuilt parts as roadmap)
   - when asked to persist decisions or research, store .md file in `docs/`
   - list of documentation files:
-    - (none yet)
+    - `docs/gpu-notes.md` - Blackwell/sm_120 wheel pinning, silent CPU fallback, measured timings

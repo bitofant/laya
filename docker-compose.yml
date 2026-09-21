@@ -1,0 +1,26 @@
+# Lifecycle for the laya container. Driven by ./start.sh and ./stop.sh --
+# run those rather than calling compose directly.
+services:
+  laya:
+    image: ${LAYA_IMAGE:-laya:local}
+    container_name: ${LAYA_CONTAINER:-laya}
+    build:
+      context: ./docker
+    # Modern compose GPU reservation; equivalent to `docker run --gpus all`.
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    volumes:
+      # Read-write on purpose: laya.Agent rewrites tokenizer_config.json on load to stay
+      # compatible across transformers versions. Read-only silently skips that fixup.
+      - ./models:/models
+    environment:
+      LAYA_MODEL_DIR: /models/${LAYA_MODEL_NAME:-laya-typed-decisions}
+      HF_HOME: /models/.hf
+      PYTHONUNBUFFERED: "1"
+    # Survives daemon/host restarts but stays off after an explicit ./stop.sh.
+    restart: unless-stopped
