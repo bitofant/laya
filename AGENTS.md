@@ -17,12 +17,29 @@
   - scripts intended to be run by humands go in top lvl directory (e.g. `start.sh`, `stop.sh`, `setup.sh`, `rebuild.sh`...)
   - scripts called by other scripts or intended to be called by LLM agents go to `scripts/`
   - list of scripts with brief description:
-    - `./setup.sh` - builds containers, downloads model weights
+    - `./setup.sh` - checks prereqs, builds image, downloads weights (idempotent; `--force` re-downloads)
     - `./start.sh` - starts (or resumes) laya container
-    - `./stop.sh` - stops running laya container
+    - `./stop.sh` - stops running laya container (`--down` removes it)
+    - `scripts/lib.sh` - shared config + helpers, sourced by all others; not run directly
+    - `scripts/build-image.sh` - builds `laya:local` from `docker/`
+    - `scripts/download-weights.sh` - fetches weights via throwaway HF container
+    - `scripts/smoke-test.sh` - end-to-end check against the HTTP endpoint (health, cuda, /decide, 422 path)
+    - `scripts/bench-latency.sh` - per-question GPU latency; needs the card free
+- runtime
+  - `docker-compose.yml` drives lifecycle; image built from `docker/` (`server.py`, `smoke_test.py`, `bench_latency.py`)
+  - serves FastAPI on `127.0.0.1:8100` (`LAYA_PORT`/`LAYA_BIND`); endpoints `/health`, `/presets`, `/decide`
+  - endpoint is UNAUTHENTICATED - keep it bound to localhost
+  - server warms up all 3 question types at startup; first pass costs ~14.6s, steady state ~6.5ms. Do not remove
+  - server refuses to start if `LAYA_DEVICE=cuda` but the model landed on CPU (fail fast, don't serve 10x slow)
+  - measured: 6.2ms/question, 2.27ms batched, 2.44GB peak VRAM (upstream claims ~33ms)
+  - laya SDK via pinned pip (`laya==0.3.4`), not a submodule
+  - default checkpoint: `convaiinnovations/laya-typed-decisions` (base checkpoints are ~chance on typed decisions)
+  - weights live in gitignored `./models`, mounted rw (the SDK rewrites `tokenizer_config.json` on load)
+  - torch MUST stay pinned to a cu128+ wheel for sm_120/Blackwell; see `docs/gpu-notes.md`
+  - `laya.load()` falls back to CPU silently — keep the smoke test's device assertion
 - documentation
   - keep AGENTS.md tiny
   - `README.md` is the human/github-facing entry point; keep in sync with actual script state (marks unbuilt parts as roadmap)
   - when asked to persist decisions or research, store .md file in `docs/`
   - list of documentation files:
-    - (none yet)
+    - `docs/gpu-notes.md` - Blackwell/sm_120 wheel pinning, silent CPU fallback, cold start, measured latency, vLLM coexistence
